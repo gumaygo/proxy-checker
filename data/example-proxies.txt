@@ -1,0 +1,26 @@
+# Format proxy yang didukung:
+
+# 1. Format dasar (tanpa protokol)
+# Program akan mencoba HTTPS terlebih dahulu, kemudian SOCKS5
+192.168.1.1:8080
+10.0.0.1:3128
+
+# 2. Format dengan protokol HTTP
+http://192.168.1.2:8080
+http://10.0.0.2:3128
+
+# 3. Format dengan protokol HTTPS
+https://192.168.1.3:8080
+https://10.0.0.3:3128
+
+# 4. Format dengan protokol SOCKS
+socks://192.168.1.4:1080
+socks4://192.168.1.5:1080
+socks5://192.168.1.6:1080
+
+# Catatan:
+# - Port umum untuk HTTP/HTTPS proxy: 80, 8080, 3128
+# - Port umum untuk SOCKS proxy: 1080, 1081
+# - Satu proxy per baris
+# - Baris yang dimulai dengan # adalah komentar
+# - Baris kosong akan diabaikan 
