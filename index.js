@@ -78,6 +78,22 @@ function createProxyAgent(proxyInfo) {
     return new HttpsProxyAgent(proxyUrl);
 }
 
+async function getGeoInfo(ip) {
+    try {
+        const response = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,countryCode,city,isp`);
+        const data = await response.json();
+        if (data.status === 'success') {
+            return {
+                location: `${data.countryCode} - ${data.city}`,
+                isp: data.isp
+            };
+        }
+    } catch (error) {
+        // Silently fail if GeoIP is unavailable
+    }
+    return { location: 'Unknown', isp: 'Unknown' };
+}
+
 async function tryProxy(proxyInfo, startTime) {
     const agent = createProxyAgent(proxyInfo);
     
@@ -102,14 +118,7 @@ async function tryProxy(proxyInfo, startTime) {
         // Detect Anonymity
         let anonymity = 'Elite';
         const headers = data.headers || {};
-        const proxyHeaders = [
-            'Via', 
-            'X-Forwarded-For', 
-            'X-Proxy-Id', 
-            'Proxy-Connection', 
-            'Forwarded'
-        ];
-
+        const proxyHeaders = ['Via', 'X-Forwarded-For', 'X-Proxy-Id', 'Proxy-Connection', 'Forwarded'];
         const hasProxyHeader = proxyHeaders.some(h => headers[h] || headers[h.toLowerCase()]);
         const xff = headers['X-Forwarded-For'] || headers['x-forwarded-for'] || '';
         
@@ -118,13 +127,18 @@ async function tryProxy(proxyInfo, startTime) {
         } else if (hasProxyHeader) {
             anonymity = 'Anonymous';
         }
+
+        // Fetch GeoIP info
+        const geo = await getGeoInfo(data.origin);
         
         return { 
             success: true, 
             ip: data.origin,
             responseTime,
             protocol: proxyInfo.protocol || 'https',
-            anonymity
+            anonymity,
+            location: geo.location,
+            isp: geo.isp
         };
     } catch (error) {
         return { success: false, error: error.message };
@@ -154,15 +168,15 @@ async function saveResults(results) {
     // 1. Save TXT
     const txtContent = results.map(r => 
         r.success 
-            ? `[ALIVE] ${r.proxy} (${r.protocol}) - [${r.anonymity}] - IP: ${r.ip} - ${r.responseTime}ms`
+            ? `[ALIVE] ${r.proxy} (${r.protocol}) - [${r.anonymity}] - ${r.location} - ${r.isp} - IP: ${r.ip} - ${r.responseTime}ms`
             : `[DEAD] ${r.proxy}`
     ).join('\n');
     fs.writeFileSync(RESULTS_TXT, txtContent);
 
     // 2. Save CSV
-    const csvHeader = 'proxy,status,protocol,anonymity,ip,responseTime,error\n';
+    const csvHeader = 'proxy,status,protocol,anonymity,location,isp,ip,responseTime,error\n';
     const csvContent = results.map(r => 
-        `"${r.proxy}","${r.success ? 'Alive' : 'Dead'}","${r.protocol || ''}","${r.anonymity || ''}","${r.ip || ''}","${r.responseTime || ''}","${r.error || ''}"`
+        `"${r.proxy}","${r.success ? 'Alive' : 'Dead'}","${r.protocol || ''}","${r.anonymity || ''}","${r.location || ''}","${r.isp || ''}","${r.ip || ''}","${r.responseTime || ''}","${r.error || ''}"`
     ).join('\n');
     fs.writeFileSync(RESULTS_CSV, csvHeader + csvContent);
 
@@ -207,12 +221,12 @@ async function main() {
 
     // Display Summary Table
     const summaryData = [
-        ['Status', 'Proxy', 'Anonymity', 'Protocol', 'IP', 'Latency']
+        ['Status', 'Proxy', 'Anonymity', 'Location', 'ISP', 'Latency']
     ];
 
     const alive = results.filter(r => r.success);
     alive.slice(0, 10).forEach(r => {
-        summaryData.push(['ALIVE', r.proxy, r.anonymity, r.protocol, r.ip, `${r.responseTime}ms`]);
+        summaryData.push(['ALIVE', r.proxy, r.anonymity, r.location, r.isp, `${r.responseTime}ms`]);
     });
 
     if (alive.length > 10) {
