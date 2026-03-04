@@ -1,18 +1,16 @@
 # Example Proxy Formats for Proxy Checker
 
-# 1. Basic format (IP:Port) - Checker will try HTTPS first, then SOCKS5
+# 1. Basic format (IP:Port)
 12.34.56.78:8080
-1.2.3.4:3128
 
-# 2. HTTP/HTTPS Protocol explicitly specified
-http://11.22.33.44:80
-https://22.33.44.55:443
+# 2. HTTP/HTTPS with Authentication (user:pass@ip:port)
+user123:password456@11.22.33.44:8080
+http://admin:secret@22.33.44.55:3128
 
-# 3. SOCKS Protocol (supports socks, socks4, socks5)
-socks4://33.44.55.66:1080
-socks5://44.55.66.77:1080
-socks://55.66.77.88:1080
+# 3. SOCKS with Authentication
+socks5://user:pass@33.44.55.66:1080
 
-# 4. Proxies with Authentication (In Development)
-# user:pass@ip:port
-# admin:secret123@123.123.123.123:8080
+# 4. Explicit Protocols
+http://1.2.3.4:80
+socks4://5.6.7.8:1080
+socks5://9.0.1.2:1080

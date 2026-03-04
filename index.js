@@ -27,27 +27,44 @@ const proxies = fs.readFileSync(PROXY_FILE, 'utf8')
 fs.writeFileSync(RESULTS_FILE, '');
 
 function parseProxy(proxyString) {
-    // Check if protocol is specified
-    if (proxyString.startsWith('http://') || proxyString.startsWith('https://') || proxyString.startsWith('socks://') || proxyString.startsWith('socks4://') || proxyString.startsWith('socks5://')) {
-        const [protocol, rest] = proxyString.split('://');
-        const [ip, port] = rest.split(':');
-        return { protocol, ip, port };
+    let protocol = null;
+    let auth = null;
+    let host = '';
+    let port = '';
+
+    let remaining = proxyString;
+
+    // 1. Extract protocol if present
+    if (remaining.includes('://')) {
+        [protocol, remaining] = remaining.split('://');
     }
-    
-    // If no protocol specified, return just IP and port
-    const [ip, port] = proxyString.split(':');
-    return { protocol: null, ip, port };
+
+    // 2. Extract auth if present (user:pass@host:port)
+    if (remaining.includes('@')) {
+        [auth, remaining] = remaining.split('@');
+    }
+
+    // 3. Extract host and port
+    if (remaining.includes(':')) {
+        [host, port] = remaining.split(':');
+    } else {
+        host = remaining;
+    }
+
+    return { protocol, auth, host, port };
 }
 
 function createProxyAgent(proxyInfo) {
-    const { protocol, ip, port } = proxyInfo;
+    const { protocol, auth, host, port } = proxyInfo;
+    const authPrefix = auth ? `${auth}@` : '';
+    const proxyUrl = `${protocol || 'http'}://${authPrefix}${host}:${port}`;
     
-    if (protocol === 'socks' || protocol === 'socks4' || protocol === 'socks5') {
-        return new SocksProxyAgent(`${protocol}://${ip}:${port}`);
+    if (protocol && protocol.startsWith('socks')) {
+        return new SocksProxyAgent(proxyUrl);
     }
     
-    // Default to HTTPS proxy
-    return new HttpsProxyAgent(`http://${ip}:${port}`);
+    // Default to HTTPS proxy for http/https protocols
+    return new HttpsProxyAgent(proxyUrl);
 }
 
 async function checkProxy(proxyString) {
@@ -74,6 +91,7 @@ async function checkProxy(proxyString) {
 
 async function tryProxy(proxyInfo, startTime) {
     const agent = createProxyAgent(proxyInfo);
+    const { host, port, protocol } = proxyInfo;
     
     try {
         const controller = new AbortController();
@@ -92,11 +110,11 @@ async function tryProxy(proxyInfo, startTime) {
 
         const data = await response.json();
         const responseTime = Date.now() - startTime;
-        const protocol = proxyInfo.protocol ? ` (${proxyInfo.protocol})` : '';
+        const protoLabel = protocol ? ` (${protocol})` : '';
         
         return { 
             success: true, 
-            info: `✅ ${proxyInfo.ip}:${proxyInfo.port}${protocol} - Alive - ${data.origin} - ${responseTime} ms`
+            info: `✅ ${host}:${port}${protoLabel} - Alive - ${data.origin} - ${responseTime} ms`
         };
     } catch (error) {
         return { success: false, error };

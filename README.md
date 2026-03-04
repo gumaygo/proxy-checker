@@ -11,34 +11,17 @@ A Node.js application to check and validate proxy servers.
 - Shows proxy status (Alive/Dead)
 - Displays response time and detected IP for working proxies
 - Saves results to `data/results.txt`
-- Supports multiple proxy protocols (HTTP, HTTPS, SOCKS4, SOCKS5)
+- **Protocol Support:** Automatically detects HTTP, HTTPS, SOCKS4, and SOCKS5
+- **Proxy Authentication:** Supports `user:password@ip:port` format
+- **Automatic Fallback:** Tries multiple protocols if none specified
 
-## Installation
-
-1. Make sure you have Node.js installed
-2. Clone this repository
-3. Install dependencies:
-```bash
-npm install
-```
-
-## Usage
-
-1. Add your proxies to `data/proxies.txt` (one proxy per line)
-2. Run the checker:
-```bash
-npm start
-```
+... (installation and usage sections)
 
 ## Supported Proxy Formats
 
-The following proxy formats are supported:
-
-1. Basic format (no protocol):
-```
-192.168.1.1:8080
-```
-Program will try HTTPS first, then SOCKS5
+1. **Basic:** `192.168.1.1:8080`
+2. **With Auth:** `username:password@192.168.1.1:8080`
+3. **With Protocol & Auth:** `socks5://user:pass@192.168.1.1:1080`
 
 2. HTTP proxy:
 ```
