@@ -13,13 +13,26 @@ const RESULTS_TXT = path.join(DATA_DIR, 'results.txt');
 const RESULTS_CSV = path.join(DATA_DIR, 'results.csv');
 const RESULTS_JSON = path.join(DATA_DIR, 'results.json');
 
-const TARGET_URL = 'https://httpbin.org/ip';
+const TARGET_URL = 'https://httpbin.org/get';
 const TIMEOUT = 7000;
 const CONCURRENCY = 10;
+
+let realIP = '';
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR);
+}
+
+// Fetch real IP for transparency check
+async function getRealIP() {
+    try {
+        const response = await fetch('https://httpbin.org/ip');
+        const data = await response.json();
+        realIP = data.origin;
+    } catch (error) {
+        console.error('Warning: Could not fetch real IP. Transparency check may be limited.');
+    }
 }
 
 // Read proxies from file
@@ -86,11 +99,32 @@ async function tryProxy(proxyInfo, startTime) {
         const data = await response.json();
         const responseTime = Date.now() - startTime;
         
+        // Detect Anonymity
+        let anonymity = 'Elite';
+        const headers = data.headers || {};
+        const proxyHeaders = [
+            'Via', 
+            'X-Forwarded-For', 
+            'X-Proxy-Id', 
+            'Proxy-Connection', 
+            'Forwarded'
+        ];
+
+        const hasProxyHeader = proxyHeaders.some(h => headers[h] || headers[h.toLowerCase()]);
+        const xff = headers['X-Forwarded-For'] || headers['x-forwarded-for'] || '';
+        
+        if (xff.includes(realIP) && realIP !== '') {
+            anonymity = 'Transparent';
+        } else if (hasProxyHeader) {
+            anonymity = 'Anonymous';
+        }
+        
         return { 
             success: true, 
             ip: data.origin,
             responseTime,
-            protocol: proxyInfo.protocol || 'https'
+            protocol: proxyInfo.protocol || 'https',
+            anonymity
         };
     } catch (error) {
         return { success: false, error: error.message };
@@ -120,15 +154,15 @@ async function saveResults(results) {
     // 1. Save TXT
     const txtContent = results.map(r => 
         r.success 
-            ? `[ALIVE] ${r.proxy} (${r.protocol}) - IP: ${r.ip} - ${r.responseTime}ms`
+            ? `[ALIVE] ${r.proxy} (${r.protocol}) - [${r.anonymity}] - IP: ${r.ip} - ${r.responseTime}ms`
             : `[DEAD] ${r.proxy}`
     ).join('\n');
     fs.writeFileSync(RESULTS_TXT, txtContent);
 
     // 2. Save CSV
-    const csvHeader = 'proxy,status,protocol,ip,responseTime,error\n';
+    const csvHeader = 'proxy,status,protocol,anonymity,ip,responseTime,error\n';
     const csvContent = results.map(r => 
-        `"${r.proxy}","${r.success ? 'Alive' : 'Dead'}","${r.protocol || ''}","${r.ip || ''}","${r.responseTime || ''}","${r.error || ''}"`
+        `"${r.proxy}","${r.success ? 'Alive' : 'Dead'}","${r.protocol || ''}","${r.anonymity || ''}","${r.ip || ''}","${r.responseTime || ''}","${r.error || ''}"`
     ).join('\n');
     fs.writeFileSync(RESULTS_CSV, csvHeader + csvContent);
 
@@ -138,6 +172,8 @@ async function saveResults(results) {
 
 async function main() {
     console.log('--- Proxy Checker ---');
+    await getRealIP();
+    console.log(`Real IP: ${realIP || 'Unknown'}`);
     console.log(`Proxies: ${proxies.length}`);
     console.log(`Threads: ${CONCURRENCY}\n`);
 
@@ -171,16 +207,16 @@ async function main() {
 
     // Display Summary Table
     const summaryData = [
-        ['Status', 'Proxy', 'Protocol', 'IP', 'Latency']
+        ['Status', 'Proxy', 'Anonymity', 'Protocol', 'IP', 'Latency']
     ];
 
     const alive = results.filter(r => r.success);
     alive.slice(0, 10).forEach(r => {
-        summaryData.push(['ALIVE', r.proxy, r.protocol, r.ip, `${r.responseTime}ms`]);
+        summaryData.push(['ALIVE', r.proxy, r.anonymity, r.protocol, r.ip, `${r.responseTime}ms`]);
     });
 
     if (alive.length > 10) {
-        summaryData.push(['...', '...', '...', '...', '...']);
+        summaryData.push(['...', '...', '...', '...', '...', '...']);
     }
 
     console.log('\n--- Results Summary (Top 10) ---');
