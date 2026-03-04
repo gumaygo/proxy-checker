@@ -3,28 +3,30 @@ const path = require('path');
 const fetch = require('node-fetch');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const { SocksProxyAgent } = require('socks-proxy-agent');
+const cliProgress = require('cli-progress');
+const { table } = require('table');
 
 // Configuration
-const PROXY_FILE = path.join(__dirname, 'data', 'proxies.txt');
-const RESULTS_FILE = path.join(__dirname, 'data', 'results.txt');
-const TARGET_URL = 'https://httpbin.org/ip';
-const TIMEOUT = 7000; // 7 seconds
-const CONCURRENCY = 10; // Number of simultaneous checks 
+const DATA_DIR = path.join(__dirname, 'data');
+const PROXY_FILE = path.join(DATA_DIR, 'proxies.txt');
+const RESULTS_TXT = path.join(DATA_DIR, 'results.txt');
+const RESULTS_CSV = path.join(DATA_DIR, 'results.csv');
+const RESULTS_JSON = path.join(DATA_DIR, 'results.json');
 
+const TARGET_URL = 'https://httpbin.org/ip';
+const TIMEOUT = 7000;
+const CONCURRENCY = 10;
 
 // Ensure data directory exists
-if (!fs.existsSync(path.join(__dirname, 'data'))) {
-    fs.mkdirSync(path.join(__dirname, 'data'));
+if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR);
 }
 
 // Read proxies from file
 const proxies = fs.readFileSync(PROXY_FILE, 'utf8')
     .split('\n')
     .map(line => line.trim())
-    .filter(line => line && line.includes(':'));
-
-// Clear previous results
-fs.writeFileSync(RESULTS_FILE, '');
+    .filter(line => line && (line.includes(':') || line.includes('@')));
 
 function parseProxy(proxyString) {
     let protocol = null;
@@ -34,17 +36,14 @@ function parseProxy(proxyString) {
 
     let remaining = proxyString;
 
-    // 1. Extract protocol if present
     if (remaining.includes('://')) {
         [protocol, remaining] = remaining.split('://');
     }
 
-    // 2. Extract auth if present (user:pass@host:port)
     if (remaining.includes('@')) {
         [auth, remaining] = remaining.split('@');
     }
 
-    // 3. Extract host and port
     if (remaining.includes(':')) {
         [host, port] = remaining.split(':');
     } else {
@@ -63,35 +62,11 @@ function createProxyAgent(proxyInfo) {
         return new SocksProxyAgent(proxyUrl);
     }
     
-    // Default to HTTPS proxy for http/https protocols
     return new HttpsProxyAgent(proxyUrl);
-}
-
-async function checkProxy(proxyString) {
-    const proxyInfo = parseProxy(proxyString);
-    const startTime = Date.now();
-    
-    // If protocol is specified, only try that protocol
-    if (proxyInfo.protocol) {
-        return await tryProxy(proxyInfo, startTime);
-    }
-    
-    // If no protocol specified, try both HTTP and SOCKS
-    try {
-        // Try HTTPS first
-        const httpsResult = await tryProxy({ ...proxyInfo, protocol: 'https' }, startTime);
-        if (httpsResult.success) return httpsResult;
-        
-        // If HTTPS fails, try SOCKS5
-        return await tryProxy({ ...proxyInfo, protocol: 'socks5' }, startTime);
-    } catch (error) {
-        return { success: false, error };
-    }
 }
 
 async function tryProxy(proxyInfo, startTime) {
     const agent = createProxyAgent(proxyInfo);
-    const { host, port, protocol } = proxyInfo;
     
     try {
         const controller = new AbortController();
@@ -110,53 +85,110 @@ async function tryProxy(proxyInfo, startTime) {
 
         const data = await response.json();
         const responseTime = Date.now() - startTime;
-        const protoLabel = protocol ? ` (${protocol})` : '';
         
         return { 
             success: true, 
-            info: `✅ ${host}:${port}${protoLabel} - Alive - ${data.origin} - ${responseTime} ms`
+            ip: data.origin,
+            responseTime,
+            protocol: proxyInfo.protocol || 'https'
         };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
+
+async function checkProxy(proxyString) {
+    const proxyInfo = parseProxy(proxyString);
+    const startTime = Date.now();
+    
+    if (proxyInfo.protocol) {
+        return await tryProxy(proxyInfo, startTime);
+    }
+    
+    // Fallback: Try HTTPS then SOCKS5
+    try {
+        const httpsResult = await tryProxy({ ...proxyInfo, protocol: 'https' }, startTime);
+        if (httpsResult.success) return httpsResult;
+        
+        return await tryProxy({ ...proxyInfo, protocol: 'socks5' }, startTime);
     } catch (error) {
         return { success: false, error };
     }
 }
 
-async function main() {
-    console.log('Starting proxy checker...');
-    console.log(`Found ${proxies.length} proxies to check`);
-    console.log(`Concurrency: ${CONCURRENCY} threads\n`);
+async function saveResults(results) {
+    // 1. Save TXT
+    const txtContent = results.map(r => 
+        r.success 
+            ? `[ALIVE] ${r.proxy} (${r.protocol}) - IP: ${r.ip} - ${r.responseTime}ms`
+            : `[DEAD] ${r.proxy}`
+    ).join('\n');
+    fs.writeFileSync(RESULTS_TXT, txtContent);
 
+    // 2. Save CSV
+    const csvHeader = 'proxy,status,protocol,ip,responseTime,error\n';
+    const csvContent = results.map(r => 
+        `"${r.proxy}","${r.success ? 'Alive' : 'Dead'}","${r.protocol || ''}","${r.ip || ''}","${r.responseTime || ''}","${r.error || ''}"`
+    ).join('\n');
+    fs.writeFileSync(RESULTS_CSV, csvHeader + csvContent);
+
+    // 3. Save JSON
+    fs.writeFileSync(RESULTS_JSON, JSON.stringify(results, null, 2));
+}
+
+async function main() {
+    console.log('--- Proxy Checker ---');
+    console.log(`Proxies: ${proxies.length}`);
+    console.log(`Threads: ${CONCURRENCY}\n`);
+
+    const results = [];
     const queue = [...proxies];
-    const total = proxies.length;
-    let completed = 0;
+    const progressBar = new cliProgress.SingleBar({
+        format: 'Progress | {bar} | {percentage}% | {value}/{total} Proxies',
+        barCompleteChar: '\u2588',
+        barIncompleteChar: '\u2591',
+        hideCursor: true
+    });
+
+    progressBar.start(proxies.length, 0);
 
     async function worker() {
         while (queue.length > 0) {
             const proxy = queue.shift();
             if (!proxy) continue;
 
-            const result = await checkProxy(proxy);
-            completed++;
-            
-            let logMsg = '';
-            if (result.success) {
-                logMsg = result.info;
-            } else {
-                logMsg = `❌ ${proxy} - Dead`;
-            }
-            
-            fs.appendFileSync(RESULTS_FILE, logMsg + '\n');
-            console.log(`[${completed}/${total}] ${logMsg}`);
+            const res = await checkProxy(proxy);
+            results.push({ proxy, ...res });
+            progressBar.increment();
         }
     }
 
-    // Create and start workers
-    const workers = Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker());
-
+    const workers = Array.from({ length: Math.min(CONCURRENCY, proxies.length) }, () => worker());
     await Promise.all(workers);
+    
+    progressBar.stop();
+    await saveResults(results);
 
-    console.log('\nProxy checking completed!');
-    console.log(`Results saved to: ${RESULTS_FILE}`);
+    // Display Summary Table
+    const summaryData = [
+        ['Status', 'Proxy', 'Protocol', 'IP', 'Latency']
+    ];
+
+    const alive = results.filter(r => r.success);
+    alive.slice(0, 10).forEach(r => {
+        summaryData.push(['ALIVE', r.proxy, r.protocol, r.ip, `${r.responseTime}ms`]);
+    });
+
+    if (alive.length > 10) {
+        summaryData.push(['...', '...', '...', '...', '...']);
+    }
+
+    console.log('\n--- Results Summary (Top 10) ---');
+    console.log(table(summaryData));
+    
+    console.log(`Total Alive: ${alive.length}`);
+    console.log(`Total Dead:  ${results.length - alive.length}`);
+    console.log(`\nExports: txt, csv, json saved in /data directory.`);
 }
 
 main().catch(console.error); 

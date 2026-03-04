@@ -7,8 +7,10 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "node-fetch": "^2.6.9",
+    "cli-progress": "^3.12.0",
     "https-proxy-agent": "^5.0.1",
-    "socks-proxy-agent": "^7.0.0"
+    "node-fetch": "^2.6.9",
+    "socks-proxy-agent": "^7.0.0",
+    "table": "^6.9.0"
   }
-} 
+}

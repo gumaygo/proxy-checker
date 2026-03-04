@@ -4,4 +4,6 @@ yarn-debug.log*
 yarn-error.log*
 .DS_Store
 data/results.txt
+data/results.csv
+data/results.json
 data/proxies.txt
