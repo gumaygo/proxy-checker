@@ -4,6 +4,8 @@ A Node.js application to check and validate proxy servers.
 
 ## Features
 
+- **High Performance:** Concurrent checking (multi-threaded) for faster results
+- **Progress Tracking:** Real-time progress updates in the console
 - Reads proxy list from `data/proxies.txt`
 - Tests proxy connection to `https://httpbin.org/ip`
 - Shows proxy status (Alive/Dead)
@@ -73,5 +75,7 @@ Example output:
 ## Configuration
 
 You can modify the following settings in `index.js`:
+- `CONCURRENCY`: Number of simultaneous checks (default: 10)
 - `TARGET_URL`: The URL to test proxies against (default: https://httpbin.org/ip)
 - `TIMEOUT`: Connection timeout in milliseconds (default: 7000) 
+ 

@@ -9,6 +9,8 @@ const PROXY_FILE = path.join(__dirname, 'data', 'proxies.txt');
 const RESULTS_FILE = path.join(__dirname, 'data', 'results.txt');
 const TARGET_URL = 'https://httpbin.org/ip';
 const TIMEOUT = 7000; // 7 seconds
+const CONCURRENCY = 10; // Number of simultaneous checks 
+
 
 // Ensure data directory exists
 if (!fs.existsSync(path.join(__dirname, 'data'))) {
@@ -91,10 +93,11 @@ async function tryProxy(proxyInfo, startTime) {
         const data = await response.json();
         const responseTime = Date.now() - startTime;
         const protocol = proxyInfo.protocol ? ` (${proxyInfo.protocol})` : '';
-        const result = `✅ ${proxyInfo.ip}:${proxyInfo.port}${protocol} - Alive - ${data.origin} - ${responseTime} ms\n`;
-        fs.appendFileSync(RESULTS_FILE, result);
-        console.log(result.trim());
-        return { success: true };
+        
+        return { 
+            success: true, 
+            info: `✅ ${proxyInfo.ip}:${proxyInfo.port}${protocol} - Alive - ${data.origin} - ${responseTime} ms`
+        };
     } catch (error) {
         return { success: false, error };
     }
@@ -102,16 +105,37 @@ async function tryProxy(proxyInfo, startTime) {
 
 async function main() {
     console.log('Starting proxy checker...');
-    console.log(`Found ${proxies.length} proxies to check\n`);
+    console.log(`Found ${proxies.length} proxies to check`);
+    console.log(`Concurrency: ${CONCURRENCY} threads\n`);
 
-    for (const proxy of proxies) {
-        const result = await checkProxy(proxy);
-        if (!result.success) {
-            const result = `❌ ${proxy} - Dead\n`;
-            fs.appendFileSync(RESULTS_FILE, result);
-            console.log(result.trim());
+    const queue = [...proxies];
+    const total = proxies.length;
+    let completed = 0;
+
+    async function worker() {
+        while (queue.length > 0) {
+            const proxy = queue.shift();
+            if (!proxy) continue;
+
+            const result = await checkProxy(proxy);
+            completed++;
+            
+            let logMsg = '';
+            if (result.success) {
+                logMsg = result.info;
+            } else {
+                logMsg = `❌ ${proxy} - Dead`;
+            }
+            
+            fs.appendFileSync(RESULTS_FILE, logMsg + '\n');
+            console.log(`[${completed}/${total}] ${logMsg}`);
         }
     }
+
+    // Create and start workers
+    const workers = Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker());
+
+    await Promise.all(workers);
 
     console.log('\nProxy checking completed!');
     console.log(`Results saved to: ${RESULTS_FILE}`);
