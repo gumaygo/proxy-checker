@@ -1,21 +1,45 @@
 # Proxy Checker
 
-High-performance, concurrent proxy validator supporting multiple protocols and authentication.
+Proxy Checker is a concurrent CLI tool for validating large proxy lists, classifying anonymity level, and exporting results in multiple formats.
+
+## Problem
+
+Validating proxy lists manually is slow, noisy, and difficult to scale. Teams often need more than a simple alive-or-dead check. They need protocol detection, retry logic, latency measurements, and structured output they can use in downstream workflows.
+
+## Solution
+
+This project automates the validation pipeline by:
+
+- checking proxies concurrently through a worker-pool model
+- supporting HTTP, HTTPS, SOCKS4, and SOCKS5 flows
+- handling authenticated proxies
+- retrying timeout-based failures
+- classifying anonymity levels
+- exporting usable results for both humans and scripts
+
+## Tech Stack
+
+- Node.js
+- `node-fetch`
+- `https-proxy-agent`
+- `socks-proxy-agent`
+- `cli-progress`
+- `table`
+- `minimist`
 
 ## Key Features
 
-- **Concurrent Validation**: High-speed checking using worker-pool pattern.
-- **Interactive CLI**: Real-time progress bar with live alive proxy output.
-- **Protocol Detection**: Supports HTTP, HTTPS, SOCKS4, and SOCKS5.
-- **Proxy Authentication**: Full support for `user:password@ip:port` format.
-- **Deduplication**: Automatically removes duplicate proxies before checking.
-- **Retry Logic**: Retries on timeout before marking a proxy as dead.
-- **Anonymity Detection**: Classifies proxies as Elite, Anonymous, or Transparent.
-- **Error Categorization**: Differentiates Timeout, ConnRefused, AuthFailed, and Other failures.
-- **Statistics**: Average latency, fastest proxy, and anonymity breakdown.
-- **Multi-Format Export**: Saves results in TXT, CSV, JSON, `alive.txt`, and `elite.txt`.
+- Concurrent validation for faster throughput
+- Interactive CLI progress and alive-proxy logging
+- Deduplication before execution
+- Automatic protocol fallback when protocol is not specified
+- Error categorization for timeout, connection refusal, authentication failure, and other failures
+- Geo and ISP enrichment for successful checks
+- Export support for TXT, CSV, JSON, `alive.txt`, and `elite.txt`
 
-## Installation
+## How To Run
+
+1. Install dependencies.
 
 ```bash
 git clone https://github.com/gumaygo/proxy-checker.git
@@ -23,20 +47,18 @@ cd proxy-checker
 npm install
 ```
 
-## Usage
+2. Add proxy entries to `data/proxies.txt`.
 
-1. Add your proxies to `data/proxies.txt` (one per line).
-2. Run the checker:
+3. Run the checker.
 
 ```bash
-# Default settings
 npm start
+```
 
-# Custom settings
+Use custom runtime settings when needed:
+
+```bash
 node index.js --concurrency 20 --timeout 5000 --retry 2
-
-# Short flags
-node index.js -c 20 -t 5000 -r 2
 ```
 
 ## CLI Options
@@ -46,25 +68,42 @@ node index.js -c 20 -t 5000 -r 2
 | `--concurrency` | `-c` | `10` | Number of simultaneous checks |
 | `--timeout` | `-t` | `7000` | Request timeout in milliseconds |
 | `--retry` | `-r` | `1` | Retry count on timeout |
-| `--target` | | `https://httpbin.org/get` | Validation endpoint |
+| `--target` |  | `https://httpbin.org/get` | Validation endpoint |
 
-## Supported Proxy Formats
+## Sample Output
 
-- `192.168.1.1:8080` (Default HTTPS/SOCKS5 fallback)
-- `user:pass@192.168.1.1:8080` (With authentication)
-- `socks5://user:pass@192.168.1.1:1080` (Explicit protocol)
+```text
+--- Proxy Checker ---
+Real IP     : 203.0.113.10
+Proxies     : 250 (18 duplicates removed)
+Concurrency : 20 | Timeout: 5000ms | Retry: 2x
+Target      : https://httpbin.org/get
 
-## Export Files
+[ALIVE] 198.51.100.20:8080 (https) [Elite] US - Ashburn - 421ms
+[ALIVE] socks5://203.0.113.8:1080 (socks5) [Anonymous] SG - Singapore - 538ms
 
-All results are saved to the `data/` directory:
+Total Alive  : 67
+Total Dead   : 183
+Anonymity    : Elite=42 | Anonymous=19 | Transparent=6
+Avg Latency  : 612ms | Fastest: 198.51.100.20:8080 (421ms)
+Dead Reasons : Timeout=95 | ConnRefused=57 | AuthFailed=11 | Other=20
+```
 
-| File | Description |
-|------|-------------|
-| `results.txt` | Full log (alive + dead with error types) |
-| `alive.txt` | Alive proxies sorted by latency (fastest first) |
-| `elite.txt` | Elite (fully anonymous) proxies only |
-| `results.csv` | Compatible with Excel and data analysis tools |
-| `results.json` | Ready for programmatic use |
+## Export Output
+
+The run generates structured output in the `data/` folder:
+
+- `results.txt` for the full log
+- `alive.txt` for sorted alive proxies
+- `elite.txt` for elite proxies only
+- `results.csv` for spreadsheet analysis
+- `results.json` for programmatic consumption
+
+## Impact
+
+- Speeds up large-batch proxy validation with concurrency
+- Produces analyst-friendly and machine-friendly outputs in one run
+- Demonstrates backend engineering strengths in reliability, observability, and tooling
 
 ## License
 
